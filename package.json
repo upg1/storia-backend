@@ -53,7 +53,9 @@
     "@adonisjs/core": "^6.2.2",
     "@adonisjs/cors": "^2.2.1",
     "@adonisjs/lucid": "^20.1.0",
+    "@langchain/anthropic": "^0.1.9",
     "@vinejs/vine": "^1.7.1",
+    "apify-client": "^2.9.3",
     "langchain": "^0.1.30",
     "neo4j-driver": "^5.18.0",
     "reflect-metadata": "^0.2.1"

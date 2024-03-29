@@ -21,5 +21,6 @@ export default await Env.create(new URL('../', import.meta.url), {
   AURA_CONNECTION_KEY: Env.schema.string(),
   ANTHROPIC_API_TOKEN: Env.schema.string(),
   VOYAGE_API_KEY: Env.schema.string(),
-
+  APIFY_APP_TOKEN: Env.schema.string(),
+  APIFY_DATASET_ID: Env.schema.string()
 })
