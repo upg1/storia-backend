@@ -10,9 +10,6 @@
 import router from '@adonisjs/core/services/router'
 import TweetsController from '#controllers/tweets_controller'
 
-
-
-
 router.get('/', async () => {
   return {
     hello: 'world',
