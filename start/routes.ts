@@ -16,7 +16,10 @@ router.get('/', async () => {
   }
 })
 
-router.get('/tweetchat', [TweetsController, 'analyze'])
+router.get('/create-influencer-handles', [TweetsController, 'createInfluencerHandles'])
+
+router.get('/create-random-influencer-follows', [TweetsController, 'generateRandomFollowsForAllHandles'])
+
 
 
 

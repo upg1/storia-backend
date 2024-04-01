@@ -1,7 +1,7 @@
 // import type { HttpContext } from '@adonisjs/core/http'
 import { pull } from "langchain/hub";
 import { Neo4jVectorStore } from "@langchain/community/vectorstores/neo4j_vector";
-import { VoyageEmbeddings } from "langchain/embeddings/voyage";
+import { VoyageEmbeddings } from "@langchain/community/embeddings/voyage";
 import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
@@ -57,19 +57,19 @@ async function fetchTopSciencePosts() {
     const { items } = await client.dataset(topScienceRun.defaultDatasetId).listItems();
 
     // Return only top 5 science posts
-    return items.slice(0,5);
+    return items
 }
 
 function extractUserIdsFromPosts(posts) {
 	const userIds = []
 	for (const post of posts) {
-		userIds.push("@" + post["user"]["screen_name"])
+		userIds.push(post["user"]["screen_name"])
 	}
 	return userIds
 }
 
 function extractUserIdFromPost(post) {
-	return "@" + post["user"]["screen_name"]
+	return post["user"]["screen_name"]
 }
 
 async function fetchFollowersTopPosts(userIds) {
@@ -260,53 +260,133 @@ const processTweets = async (tweets) => {
 }
 
 
+async function createRandomRelationships() {
+
+	const session = driver.session();
+    const getHandleNodesQuery = `
+        MATCH (h:Handle)
+        RETURN h
+    `;
+
+    try {
+		// Fetching Handle nodes from Neo4j
+		const handleNodesResult = await session.run(getHandleNodesQuery);
+
+		// Constructing dictionary from Handle nodes
+		const handleNodesDict = {};
+		handleNodesResult.records.forEach(record => {
+		    const handleNode = record.get('h').properties;
+		    handleNodesDict[handleNode.id] = handleNode;
+		});
+
+		// Generating random source-target relationships
+		const relationshipsDict = generateRandomRelationships(handleNodesDict, 10); // Adjust the number of relationships as needed
+
+		console.log(relationshipsDict);
+
+		// Creating relationships in Neo4j
+		await createRelationships(session, relationshipsDict);
+    } catch (error) {
+        console.error('Error:', error);
+    } finally {
+        await session.close();
+    }
+}
+
+// Function to generate random source-target relationships
+function generateRandomRelationships(handleNodesDict, numRelationships) {
+    const relationshipsDict = {};
+    const handleNodeIds = Object.keys(handleNodesDict);
+
+    for (let i = 0; i < numRelationships; i++) {
+        const randomSourceIndex = Math.floor(Math.random() * handleNodeIds.length);
+        let randomTargetIndex;
+        do {
+            randomTargetIndex = Math.floor(Math.random() * handleNodeIds.length);
+        } while (randomTargetIndex === randomSourceIndex);
+
+        const sourceId = handleNodeIds[randomSourceIndex];
+        const targetId = handleNodeIds[randomTargetIndex];
+
+        relationshipsDict[`relationship${i}`] = { source: sourceId, target: targetId };
+    }
+
+    return relationshipsDict;
+}
+
+// Function to create relationships in Neo4j
+async function createRelationships(session, relationshipsDict) {
+    for (const [relationshipName, { source, target }] of Object.entries(relationshipsDict)) {
+        const cypherQuery = `
+            MATCH (a:Handle {id: $source}), (b:Handle {id: $target})
+            CREATE (a)-[:FOLLOWS]->(b)
+        `;
+
+        try {
+            await session.run(cypherQuery, { source, target });
+            console.log(`Created FOLLOWS relationship from ${source} to ${target}`);
+        } catch (error) {
+            console.error(`Error creating FOLLOWS relationship: ${error}`);
+        }
+    }
+}
+
+
 export default class TweetsController {
 
 	async index(ctx: HttpContextContract) {
 	// ... your existing index method logic ...
 	}
 
-	async analyze({ request, response }: HttpContextContract) {
+	async createInfluencerHandles({ request, response }: HttpContextContract) {
 		// 1. Retrieve tweet data
 		// const tweets = request.input('tweets') 
 		const followerGraphLibObj =  await fetchFollowerGraph()
 
 		const followerGraphLibJSON = graphlib.json.write(followerGraphLibObj)
 
-		const createNodeQueries = followerGraphLibJSON.nodes.map(node => (
-   		`MERGE (n:${node.label} {id: ${node.id}, properties: $props})`
+		const createNodeQueries = followerGraphLibObj.nodes().map(node => (
+		   `MERGE (n:Handle {id: '${node}'})`
 		));
 
-		// Create relationship queries
-		const createRelationshipQueries = followerGraphLibJSON.edges.map(edge => (
-			`MATCH (a:{edge.sourceLabel}), (b:{edge.targetLabel})
-			 WHERE a.id = ${edge.source} AND b.id = ${edge.target} 
-			 CREATE (a)-[r:${edge.type} {properties: $props}]->(b)`
-		));
-	  // const session = driver.session();
 
-		// try {
-		//   // Create nodes
-		//   for (const query of createNodeQueries) {
-		//     await session.run(query, { props: node.properties }); 
-		//   }
+		 const getHandleNodesQuery = `
+			MATCH (h:Handle)
+			RETURN h
+    	`;
+		
+		const session = driver.session();
+		let nodes = []
+		try {
+			
+			// Create nodes
+			for (const query of createNodeQueries) {
+				await session.run(query); 
+			}
+			const result = await session.run(getHandleNodesQuery);
+	        nodes = result.records.map(record => record.get('h').properties);
 
-		//   // Create relationships
-		//   for (const query of createRelationshipQueries) {
-		//     await session.run(query, { props: edge.properties }); 
-		//   }
+		} catch(error) {
+			console.log(error)
+		} finally {
+			await session.close()
+		}
 
-		// } finally {
-		//   await session.close();
-		//   await driver.close();
-		// }
-
-		// 2. Perform your tweet analysis (Adapt from your Python code)
-		// ... your logic using LangChainJS, Neo4j, etc. ...
-		// const analysisResult = await processTweets(tweets) // Assuming you have this function
+		return response.json(nodes) 
 
 
-		// 3. Return the analysis result
-		return response.json("Completed run") 
+		// 3. Return the resulting handles
+		
+	}
+
+	async generateRandomFollowsForAllHandles({ request, response }: HttpContextContract) {
+
+		try {
+			createRandomRelationships()
+		} catch(error){
+			console.log(error)
+		}
+
+		return response.json("relationships Created") 
 	}
 }
