@@ -8,9 +8,10 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { Document } from "@langchain/core/documents";
 import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddings/hf_transformers";
-import { ApifyClient } from 'apify-client'
+import { ApifyClient } from 'apify-client';
+import Anthropic from "@anthropic-ai/sdk";
 import graphlib, {Graph} from "@dagrejs/graphlib";
-import neo4j from "neo4j-driver"
+import neo4j, { Record } from "neo4j-driver"
 import env from '#start/env'
 
 
@@ -20,7 +21,6 @@ import env from '#start/env'
 
 
 const APIFY_APP_TOKEN = env.get('APIFY_APP_TOKEN')
-const APIFY_DATASET_ID	= env.get('APIFY_DATASET_ID')
 const VOYAGE_API_KEY = env.get('VOYAGE_API_KEY')
 const AURA_CONNECTION_KEY = env.get('AURA_CONNECTION_KEY')
 const AURA_CONNECTION_URI = env.get('AURA_CONNECTION_URI')
@@ -60,7 +60,7 @@ async function fetchTopSciencePosts() {
     return items
 }
 
-function extractUserIdsFromPosts(posts) {
+function extractUserIdsFromPosts(posts: any) {
 	const userIds = []
 	for (const post of posts) {
 		userIds.push(post["user"]["screen_name"])
@@ -68,11 +68,11 @@ function extractUserIdsFromPosts(posts) {
 	return userIds
 }
 
-function extractUserIdFromPost(post) {
+function extractUserIdFromPost(post: any) {
 	return post["user"]["screen_name"]
 }
 
-async function fetchFollowersTopPosts(userIds) {
+async function fetchFollowersTopPosts(userIds: any) {
     const client = new ApifyClient({
         token: APIFY_APP_TOKEN
     });
@@ -109,7 +109,7 @@ async function fetchFollowersTopPosts(userIds) {
     return topPostsPerUser;
 }
 
-async function isTopPostScienceOrAcademic(postText) {
+async function isTopPostScienceOrAcademic(postText: any) {
     // Placeholder implementation: Check if the post contains specific keywords related to science or academic topics
     const scienceKeywords = ["science", "scientific", "research", "study"];
     const academicKeywords = ["academic", "paper", "study", "research"];
@@ -155,7 +155,7 @@ async function fetchFollowerGraph() {
 }
 
 // Function to create hypothetical following relationships
-function createFollowingRelationships(userIds) {
+function createFollowingRelationships(userIds: any) {
     const followingRelationships = {};
     for (let i = 0; i < userIds.length; i++) {
         const user = userIds[i];
@@ -200,7 +200,7 @@ async function fetchTweets() {
 }
 
 
-const processTweets = async (tweets) => {
+const processTweets = async (tweets: any) => {
 	try {
 		// Configuration object for Neo4j connection and other related settings
 		const config = {
@@ -389,4 +389,61 @@ export default class TweetsController {
 
 		return response.json("relationships Created") 
 	}
+
+	async getTweetsByHandles({ request, response }: HttpContextContract) {
+		try {
+            const userInput = await request.body(); 
+            const inputList = userInput.data.split(',')
+
+            const client = new ApifyClient({
+                token: process.env.APIFY_APP_TOKEN,
+            });
+            const anthropic = new Anthropic({
+            apiKey: process.env.ANTHROPIC_API_TOKEN,
+            });
+            
+            let text = `What are the common themes/sentiments expressed in these tweets and what are some articles that could be written by a journalist based on these sentiments: \n`;
+            
+            // Prepare Actor input
+            const input = {
+                "handles": inputList,
+                "tweetsDesired": 5,
+                "addUserInfo": true,
+                "startUrls": [],
+                "proxyConfig": {
+                    "useApifyProxy": true
+                }
+            };
+        
+            // Run the Actor and wait for it to finish
+                const run = await client.actor("u6ppkMWAx2E2MpEuF").call(input);
+        
+            // Fetch and print Actor results from the run's dataset (if any)
+                const { items } = await client.dataset(run.defaultDatasetId).listItems();
+                items.forEach((item) => {
+                    text += `${item.full_text} \n`
+                });  
+    
+                const msg = await anthropic.messages.create({
+                    model: "claude-3-haiku-20240307",
+                    max_tokens: 1000,
+                    temperature: 0.3,
+                    messages: [
+                        {
+                            "role": "user",
+                            "content": [
+                            {
+                                "type": "text",
+                                "text": text
+                            }
+                            ]
+                        }
+                    ]});
+                    console.log(msg)
+                    response.status(200).send(msg.content[0].text);    
+    } catch (error) {
+            console.log('error', error);
+    	}
+	}
+
 }
