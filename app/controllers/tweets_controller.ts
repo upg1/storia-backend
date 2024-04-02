@@ -438,7 +438,8 @@ export default class TweetsController {
 	async getTweetsByHandles({ request, response }: HttpContextContract) {
 		try {
             const userInput = await request.body(); 
-            const inputList = userInput.data.split(',')
+            const handleList = userInput.data[0].split(',');
+			const keywords = userInput.data[1] ? userInput.data[1].split(',') : '';
 
             const client = new ApifyClient({
                 token: process.env.APIFY_APP_TOKEN,
@@ -451,8 +452,8 @@ export default class TweetsController {
             
             // Prepare Actor input
             const input = {
-                "handles": inputList,
-                "tweetsDesired": 5,
+                "handles": handleList,
+                "tweetsDesired": 10,
                 "addUserInfo": true,
                 "startUrls": [],
                 "proxyConfig": {
@@ -465,9 +466,13 @@ export default class TweetsController {
         
             // Fetch and print Actor results from the run's dataset (if any)
                 const { items } = await client.dataset(run.defaultDatasetId).listItems();
-                items.forEach((item) => {
-                    text += `${item.full_text} \n`
-                });  
+				items.forEach((item : any) => {
+					// Check if at least one of the keywords is contained in the tweet text
+					const filtered = keywords.some((word : any) => item.full_text.toLowerCase().includes(word.toLowerCase()));
+					if (filtered) {
+						text += `${item.full_text} \n`
+					}
+				});   
     
                 const msg = await anthropic.messages.create({
                     model: "claude-3-haiku-20240307",
