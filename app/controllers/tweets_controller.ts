@@ -60,16 +60,16 @@ async function fetchTopSciencePosts() {
     return items
 }
 
-function extractUserIdsFromPosts(posts: any) {
-	const userIds = []
+function extractUserObjsFromPosts(posts: any) {
+	const userObjs = []
 	for (const post of posts) {
-		userIds.push(post["user"]["screen_name"])
+		userObjs.push(post["user"])
 	}
-	return userIds
+	return userObjs
 }
 
-function extractUserIdFromPost(post: any) {
-	return post["user"]["screen_name"]
+function extractUserObjFromPost(post: any) {
+	return post["user"]
 }
 
 async function fetchFollowersTopPosts(userIds: any) {
@@ -96,7 +96,7 @@ async function fetchFollowersTopPosts(userIds: any) {
 
         const { items } = await client.dataset(userPostsRun.defaultDatasetId).listItems();
         const userTopPosts = items.map(item => {
-        	return {"user": {"screen_name": item.user.screen_name}, "full_text": item.full_text}
+        	return {"user": item["user"], "full_text": item.full_text}
       });
         console.log(userTopPosts.length)
         // Only get top 5 posts from user's profile to later get users.
@@ -131,19 +131,13 @@ async function fetchFollowerGraph() {
     const topSciencePosts = await fetchTopSciencePosts();
 
     // Step 2: Extract userIds of users who interacted with the top tweets
-    const userIds = extractUserIdsFromPosts(topSciencePosts); // Implement extractUserIdsFromTweets function
-    console.log("Step 2 USER ID LENGTH: ", userIds.length)
+    const userObjs = extractUserObjsFromPosts(topSciencePosts); // Implement extractUserIdsFromTweets function
+    console.log("Step 2 USER LIST LENGTH: ", userObjs.length)
 
-    // Step 3: Create hypothetical following relationships
-    const followingRelationships = createFollowingRelationships(userIds);
 
     // Step 4: Add nodes and edges to the followerGraph
-    for (const userId of userIds) {
-        followerGraph.setNode(userId);
-        const following = followingRelationships[userId] || [];
-        for (const followedUserId of following) {
-            followerGraph.setEdge(userId, followedUserId);
-        }
+    for (const userObj of userObjs) {
+        followerGraph.setNode(userObj["screen_name"], { description:  userObj["description"]})
     }
 
     const followerGraphLibJSON = graphlib.json.write(followerGraph)
@@ -293,27 +287,33 @@ async function createRandomRelationships() {
     }
 }
 
-// Function to generate random source-target relationships
 function generateRandomRelationships(handleNodesDict, numRelationships) {
     const relationshipsDict = {};
     const handleNodeIds = Object.keys(handleNodesDict);
 
+    const availableTargets = [...handleNodeIds]; // Create a copy of handleNodeIds for available targets
+
     for (let i = 0; i < numRelationships; i++) {
         const randomSourceIndex = Math.floor(Math.random() * handleNodeIds.length);
-        let randomTargetIndex;
-        do {
-            randomTargetIndex = Math.floor(Math.random() * handleNodeIds.length);
-        } while (randomTargetIndex === randomSourceIndex);
-
         const sourceId = handleNodeIds[randomSourceIndex];
-        const targetId = handleNodeIds[randomTargetIndex];
+
+        // Shuffle the availableTargets array to ensure randomness
+        for (let j = availableTargets.length - 1; j > 0; j--) {
+            const randomIndex = Math.floor(Math.random() * (j + 1));
+            [availableTargets[j], availableTargets[randomIndex]] = [availableTargets[randomIndex], availableTargets[j]];
+        }
+
+        // Select a target that has not already been targeted
+        let targetId;
+        do {
+            targetId = availableTargets.pop(); // Remove and get the last element from availableTargets
+        } while (targetId === sourceId || relationshipsDict[targetId]); // Ensure the target is not the source and has not already been targeted
 
         relationshipsDict[`relationship${i}`] = { source: sourceId, target: targetId };
     }
 
     return relationshipsDict;
 }
-
 // Function to create relationships in Neo4j
 async function createRelationships(session, relationshipsDict) {
     for (const [relationshipName, { source, target }] of Object.entries(relationshipsDict)) {
@@ -345,9 +345,18 @@ export default class TweetsController {
 
 		const followerGraphLibJSON = graphlib.json.write(followerGraphLibObj)
 
-		const createNodeQueries = followerGraphLibObj.nodes().map(node => (
-		   `MERGE (n:Handle {id: '${node}'})`
-		));
+
+		// Create params just to escape any issues with strings. 
+		const createNodeQueries = followerGraphLibJSON.nodes.map(node => ({
+		    query: `
+		        MERGE (n:Handle {id: $nodeId}) 
+		        ON CREATE SET n.description = $description`,
+		    params: {
+		        nodeId: node.v,
+		        description: node.value.description || ''
+		    }
+		}));
+
 
 
 		 const getHandleNodesQuery = `
@@ -360,8 +369,8 @@ export default class TweetsController {
 		try {
 			
 			// Create nodes
-			for (const query of createNodeQueries) {
-				await session.run(query); 
+			for (const queryObj of createNodeQueries) {
+				await session.run(queryObj.query, queryObj.params); 
 			}
 			const result = await session.run(getHandleNodesQuery);
 	        nodes = result.records.map(record => record.get('h').properties);
@@ -388,6 +397,42 @@ export default class TweetsController {
 		}
 
 		return response.json("relationships Created") 
+	}
+
+	async getAllHandlesWithFollowRelationships({ response }: HttpContextContract) {
+	    const session = driver.session();
+
+	    try {
+	        const nodesResult = await session.run(`
+	            MATCH (h:Handle)
+	            RETURN h
+	        `);
+
+	        const edgesResult = await session.run(`
+	            MATCH (h1:Handle)-[r:FOLLOWS]->(h2:Handle)
+	            RETURN h1.id AS source, h2.id AS target
+	        `);
+
+	        const nodes = nodesResult.records.map(record => {
+	            const node = record.get('h').properties;
+	            return { id: node.id, data: { description: node.description || '' } };
+	        });
+
+	        const edges = edgesResult.records.map(record => ({
+	            source: record.get('source'),
+	            target: record.get('target'),
+	            id: `${record.get('source')}-${record.get('target')}`
+	        }));
+
+	        const result = { influencers: { nodes, edges } };
+
+	        return response.json(result);
+	    } catch (error) {
+	        console.log(error);
+	        return response.status(500).json({ error: 'Internal Server Error' });
+	    } finally {
+	        await session.close();
+	    }
 	}
 
 	async getTweetsByHandles({ request, response }: HttpContextContract) {

@@ -20,6 +20,8 @@ router.get('/create-influencer-handles', [TweetsController, 'createInfluencerHan
 
 router.get('/create-random-influencer-follows', [TweetsController, 'generateRandomFollowsForAllHandles'])
 
+router.get('/influencers', [TweetsController, 'getAllHandlesWithFollowRelationships'])
+
 router.post('/get-tweets-by-handles', [TweetsController, 'getTweetsByHandles']); 
 
 
