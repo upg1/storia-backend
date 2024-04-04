@@ -453,7 +453,7 @@ export default class TweetsController {
             // Prepare Actor input
             const input = {
                 "handles": handleList,
-                "tweetsDesired": 10,
+                "tweetsDesired": 5,
                 "addUserInfo": true,
                 "startUrls": [],
                 "proxyConfig": {
@@ -466,13 +466,20 @@ export default class TweetsController {
         
             // Fetch and print Actor results from the run's dataset (if any)
                 const { items } = await client.dataset(run.defaultDatasetId).listItems();
-				items.forEach((item : any) => {
-					// Check if at least one of the keywords is contained in the tweet text
-					const filtered = keywords.some((word : any) => item.full_text.toLowerCase().includes(word.toLowerCase()));
-					if (filtered) {
+				if (keywords.length > 0) {
+					items.forEach((item : any) => {
+						// Check if at least one of the keywords is contained in the tweet text
+						const filtered = keywords.some((word : any) => item.full_text.toLowerCase().includes(word.toLowerCase()));
+						if (filtered) {
+							text += `${item.full_text} \n`
+						}
+					});
+				} else {
+					// If no keywords are provided, add all tweets to the text
+					items.forEach((item : any) => {
 						text += `${item.full_text} \n`
-					}
-				});   
+					});
+				}  
     
                 const msg = await anthropic.messages.create({
                     model: "claude-3-haiku-20240307",
