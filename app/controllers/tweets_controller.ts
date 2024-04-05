@@ -413,24 +413,45 @@ export default class TweetsController {
 				anthropicApiKey: process.env.ANTHROPIC_API_TOKEN,
 			  });
             
-            let text = `What are the common themes/sentiments expressed in these tweets and what are some articles that could be written by a journalist based on these sentiments: \n`;
+            let text = `
+            What are the common themes/sentiments expressed in the following tweets under the new client
+            and what are some articles that could be written by a journalist based on these topics.
+            Select the top 3 newsworthy tweets out of the given ones. 
+            List the content of the tweet and then your analysis of its newsworthiness \n`;
             
             // Prepare Actor input
             const input = {
                 "handles": handleList,
-                "tweetsDesired": 5,
+                "tweetsDesired": 10,
                 "addUserInfo": true,
                 "startUrls": [],
                 "proxyConfig": {
                     "useApifyProxy": true
                 }
             };
-        
+
+		    const microworldsInput = {
+		    	"handle": handleList,
+		        "addUserInfo": true,
+		        "maxRequestRetries": 6,
+		        "maxTweets": 5,
+		        "scrapeTweetReplies": true,
+		        "searchMode": "live"
+		    };
+
+		    	const posts = await fetchPosts(microworldsInput)
+        		const items = []
+
+        		for (const post of posts) {
+        			items.push({"full_text": post})
+        		}
             // Run the Actor and wait for it to finish
-                const run = await client.actor("u6ppkMWAx2E2MpEuF").call(input);
+            //     const run = await client.actor("u6ppkMWAx2E2MpEuF").call(input);
         
-            // Fetch and print Actor results from the run's dataset (if any)
-                const { items } = await client.dataset(run.defaultDatasetId).listItems();
+            // // Fetch and print Actor results from the run's dataset (if any)
+            //     const { items } = await client.dataset(run.defaultDatasetId).listItems();
+                console.log("TWEETS IS", items)
+                console.log("LENGTH OF KEYWORDS IS: ", keywords.length)
 				if (keywords.length > 0) {
 					items.forEach((item : any) => {
 						// Check if at least one of the keywords is contained in the tweet text
