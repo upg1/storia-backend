@@ -22,6 +22,8 @@ router.get('/create-random-influencer-follows', [TweetsController, 'generateRand
 
 router.get('/influencers', [TweetsController, 'getAllHandlesWithFollowRelationships'])
 
+router.get('/latestTrends', [TweetsController, 'getLatestTrends'])
+
 router.post('/get-tweets-by-handles', [TweetsController, 'getTweetsByHandles']); 
 
 

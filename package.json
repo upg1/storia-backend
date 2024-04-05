@@ -59,6 +59,7 @@
     "@vinejs/vine": "^1.7.1",
     "@xenova/transformers": "^2.16.1",
     "apify-client": "^2.9.3",
+    "compromise": "^14.13.0",
     "langchain": "^0.1.30",
     "neo4j-driver": "^5.18.0",
     "reflect-metadata": "^0.2.1"

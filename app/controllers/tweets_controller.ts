@@ -12,6 +12,7 @@ import { ApifyClient } from 'apify-client';
 import Anthropic from "@anthropic-ai/sdk";
 import graphlib, {Graph} from "@dagrejs/graphlib";
 import neo4j, { Record } from "neo4j-driver"
+import nlp from 'compromise'
 import env from '#start/env'
 
 
@@ -165,25 +166,16 @@ function createFollowingRelationships(userIds: any) {
 
 
 
-async function fetchTweets() {
+async function fetchPosts(input) {
 	const client = new ApifyClient({
 	    token: APIFY_APP_TOKEN
 	});
 
-	const topScienceResultsInputApify = {
-    "addUserInfo": true,
-    "maxRequestRetries": 6,
-    "maxTweets": 5,
-    "scrapeTweetReplies": true,
-    "urls": [
-        "https://twitter.com/search?q=science&src=typed_query&f=top"
-    ]
-	}
 
-	const topScienceRun= await client.actor("microworlds/twitter-scraper").call(topScienceResultsInputApify)
+	const postRun = await client.actor("microworlds/twitter-scraper").call(input)
 
 	// Fetches results from the actor's dataset.
-	const { items } = await client.dataset(topScienceRun.defaultDatasetId).listItems();
+	const { items } = await client.dataset(postRun.defaultDatasetId).listItems();
 		items.forEach((item) => {
 		    console.dir(item);
 		});
@@ -194,64 +186,7 @@ async function fetchTweets() {
 }
 
 
-const processTweets = async (tweets: any) => {
-	try {
-		// Configuration object for Neo4j connection and other related settings
-		const config = {
-			url: SCHEME_STR + AURA_CONNECTION_URI, // URL for the Neo4j instance
-			username: "neo4j", // Username for Neo4j authentication
-			password: AURA_CONNECTION_KEY,// Password for Neo4j authentication
-			nodeLabel: "tweet_chunk", // Label for the nodes in the graph
-		};
 
-
-		const documents = []
-		for (const tweet of tweets) {
-			documents.push({pageContent: tweet, metadata: {source: "testtweets"}})
-		}
-
-
-		const neo4jVectorIndex = await Neo4jVectorStore.fromDocuments(
-			documents,
-			new VoyageEmbeddings({
-      	apiKey: VOYAGE_API_KEY
-			}),
-			config
-		);
-
-		const retriever = neo4jVectorIndex.asRetriever();
-
-		const prompt = await pull<ChatPromptTemplate>("rlm/rag-prompt");
-		const llm = new ChatAnthropic({
-			temperature: 0.9,
-			modelName: "claude-3-sonnet-20240229",
-			// In Node.js defaults to process.env.ANTHROPIC_API_KEY,
-			anthropicApiKey: ANTHROPIC_API_TOKEN
-		});
-
-		const ragChain = await createStuffDocumentsChain({
-			llm,
-			prompt,
-			outputParser: new StringOutputParser(),
-		});
-
-		const retrievedDocs = await retriever.getRelevantDocuments(
-			"what is the general topic of these tweets and who are some key people or account handles mentioned in the tweets?"
-		);
-
-		const answer = await ragChain.invoke({
-			question: "what is the general topic of these tweets and who are some key people or account handles mentioned in the tweets?",
-			context: retrievedDocs,
-		});
-
-		await neo4jVectorIndex.close()
-
-		return answer
-	} catch (error) {
-		console.error("An error occurred while processing tweets:", error);
-		throw error; // Re-throw the error for handling upstream if needed
-	}
-}
 
 
 async function createRandomRelationships() {
@@ -433,6 +368,35 @@ export default class TweetsController {
 	    } finally {
 	        await session.close();
 	    }
+	}
+
+	async getLatestTrends({request, response}: HttpContextContract) {
+			const latestPostsInputApify = {
+		    "addUserInfo": true,
+		    "maxRequestRetries": 6,
+		    "maxTweets": 5,
+		    "scrapeTweetReplies": true,
+		    "urls": [
+		        "https://twitter.com/search?f=latest"
+		    	]
+			}
+
+			try {
+				latestPosts = fetchPosts(latestPostsInputApify)
+
+				// Remove stopwords
+
+				let doc = nlp(latestPosts)
+				doc.remove('stopWords')
+
+				// get count of keywords
+				const wordCounts = doc.wordCount()
+
+				return response.status(200).json(wordCounts);    
+		    } catch (error) {
+		            console.log('error', error);
+		    	}
+
 	}
 
 	async getTweetsByHandles({ request, response }: HttpContextContract) {
