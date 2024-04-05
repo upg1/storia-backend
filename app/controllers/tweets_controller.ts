@@ -8,8 +8,7 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { Document } from "@langchain/core/documents";
 import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddings/hf_transformers";
-import { ApifyClient } from 'apify-client';
-import Anthropic from "@anthropic-ai/sdk";
+import { ApifyClient } from 'apify-client'
 import graphlib, {Graph} from "@dagrejs/graphlib";
 import neo4j, { Record } from "neo4j-driver"
 import nlp from 'compromise'
@@ -408,9 +407,11 @@ export default class TweetsController {
             const client = new ApifyClient({
                 token: process.env.APIFY_APP_TOKEN,
             });
-            const anthropic = new Anthropic({
-            apiKey: process.env.ANTHROPIC_API_TOKEN,
-            });
+
+			const anthropic = new ChatAnthropic({
+				modelName: "claude-3-haiku-20240307",
+				anthropicApiKey: process.env.ANTHROPIC_API_TOKEN,
+			  });
             
             let text = `What are the common themes/sentiments expressed in these tweets and what are some articles that could be written by a journalist based on these sentiments: \n`;
             
@@ -445,23 +446,8 @@ export default class TweetsController {
 					});
 				}  
     
-                const msg = await anthropic.messages.create({
-                    model: "claude-3-haiku-20240307",
-                    max_tokens: 1000,
-                    temperature: 0.3,
-                    messages: [
-                        {
-                            "role": "user",
-                            "content": [
-                            {
-                                "type": "text",
-                                "text": text
-                            }
-                            ]
-                        }
-                    ]});
-                    console.log(msg)
-                    response.status(200).send(msg.content[0].text);    
+					const result = await anthropic.invoke(text);
+                    response.status(200).send(result.content);    
     } catch (error) {
             console.log('error', error);
     	}
