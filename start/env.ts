@@ -20,4 +20,5 @@ export default await Env.create(new URL('../', import.meta.url), {
   ANTHROPIC_API_TOKEN: Env.schema.string(),
   VOYAGE_API_KEY: Env.schema.string(),
   APIFY_APP_TOKEN: Env.schema.string(),
+  PINECONE_API_KEY: Env.schema.string(),
 })
